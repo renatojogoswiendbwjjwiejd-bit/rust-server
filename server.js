@@ -5,63 +5,66 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+    cors: { origin: "*" }
 });
 
-const SERVER_INFO = {
-  name: "BR Dedicated #01 - Vanilla",
-  maxPlayers: 50,
-  mapSize: 2000
-};
+const PORT = process.env.PORT || 10000;
 
+// Estado global do jogo no servidor
 let players = {};
 let structures = [];
 
 app.get('/status', (req, res) => {
-  res.json({
-    ...SERVER_INFO,
-    onlinePlayers: Object.keys(players).length
-  });
+    res.json({
+        status: "online",
+        serverName: "DEAD ZONE - BR Vanilla",
+        onlinePlayers: Object.keys(players).length
+    });
 });
 
 io.on('connection', (socket) => {
-  console.log(`Jogador conectado: ${socket.id}`);
+    console.log(`Sobrevivente conectado: ${socket.id}`);
 
-  socket.on('joinServer', (playerData) => {
-    players[socket.id] = {
-      id: socket.id,
-      name: playerData.name || `Sobrevivente_${socket.id.slice(0, 4)}`,
-      x: 1000,
-      y: 1000,
-      hp: 100,
-      hunger: 100,
-      thirst: 100
-    };
-    socket.emit('worldInit', { players, structures, serverInfo: SERVER_INFO });
-    socket.broadcast.emit('playerJoined', players[socket.id]);
-  });
+    // Jogador entra no servidor
+    socket.on('joinServer', (data) => {
+        players[socket.id] = {
+            id: socket.id,
+            name: data.name || "Sobrevivente",
+            x: 1000,
+            y: 1000
+        };
 
-  socket.on('move', (coords) => {
-    if (players[socket.id]) {
-      players[socket.id].x = coords.x;
-      players[socket.id].y = coords.y;
-      socket.broadcast.emit('playerMoved', { id: socket.id, x: coords.x, y: coords.y });
-    }
-  });
+        // Enviar estado atual do mundo para o novo jogador
+        socket.emit('worldInit', { players, structures });
 
-  socket.on('build', (structure) => {
-    structures.push(structure);
-    io.emit('structureBuilt', structure);
-  });
+        // Avisar os outros jogadores
+        socket.broadcast.emit('playerJoined', players[socket.id]);
+    });
 
-  socket.on('disconnect', () => {
-    delete players[socket.id];
-    io.emit('playerLeft', socket.id);
-    console.log(`Jogador saiu: ${socket.id}`);
-  });
+    // Movimentação em tempo real
+    socket.on('move', (data) => {
+        if (players[socket.id]) {
+            players[socket.id].x = data.x;
+            players[socket.id].y = data.y;
+            socket.broadcast.emit('playerMoved', { id: socket.id, x: data.x, y: data.y });
+        }
+    });
+
+    // Construção de bases modulares
+    socket.on('build', (data) => {
+        const structure = { type: data.type, x: data.x, z: data.z, owner: socket.id };
+        structures.push(structure);
+        io.emit('structureBuilt', structure); // Sincroniza com todos no servidor
+    });
+
+    // Desconexão
+    socket.on('disconnect', () => {
+        console.log(`Sobrevivente saiu: ${socket.id}`);
+        delete players[socket.id];
+        io.emit('playerLeft', socket.id);
+    });
 });
 
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor dedicado rodando na porta ${PORT}`);
+    console.log(`Servidor DEAD ZONE rodando na porta ${PORT}`);
 });
